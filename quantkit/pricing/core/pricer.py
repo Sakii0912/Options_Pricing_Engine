@@ -1,7 +1,9 @@
 """Pricing router - delegates to appropriate engine"""
 
-from .instruments import Option, OptionStyle
+from .instruments import Option, OptionStyle, OptionType
 from .market import MarketData
+from ..engines.bsm import BSMEngine
+from ..engines.binomial_tree import BinomialTreeEngine
 
 
 class Pricer:
@@ -23,4 +25,18 @@ class Pricer:
         Returns:
             Option price
         """
-        raise NotImplementedError("To be implemented")
+        if option.style == OptionStyle.EUROPEAN:
+            return BSMEngine.price(option, market)
+        
+        elif option.style == OptionStyle.AMERICAN:
+
+            if option.option_type == OptionType.CALL and market.dividend_yield == 0.0:
+                # For non-dividend paying stocks, American call = European call
+                return BSMEngine.price(option, market)
+
+            else:
+                if engine.lower() == "binomial":
+                    return BinomialTreeEngine(**kwargs).price(option, market)
+                # else:
+                #     # Default to binomial tree for American options
+                #     return BinomialTreeEngine(**kwargs).price(option, market)
