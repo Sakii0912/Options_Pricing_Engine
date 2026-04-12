@@ -2,6 +2,7 @@
 
 from enum import Enum
 from dataclasses import dataclass
+import numpy as np
 
 
 class OptionType(Enum):
@@ -31,3 +32,10 @@ class Option:
     maturity: float
     option_type: OptionType
     style: OptionStyle
+
+@dataclass
+class OptionPriceResult:
+    """Standardized output containing price and the extracted boundary."""
+    price: float
+    boundary_times: np.ndarray
+    boundary_spots: np.ndarray
