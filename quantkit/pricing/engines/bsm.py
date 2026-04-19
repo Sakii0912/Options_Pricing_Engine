@@ -2,14 +2,15 @@
 
 import math
 from scipy.stats import norm
-from ..core.instruments import Option, OptionType
+from ..core.instruments import Option, OptionStyle, OptionType
 from ..core.market import MarketData
 
 
 class BSMEngine:
     """
     Black-Scholes-Merton pricing engine for European options.
-    Supports options with and without dividend yield.
+    Supports options with continuous dividend yield.
+    Discrete dividends: uses spot-adjustment approximation for European options only.
     """
 
     @staticmethod
@@ -18,10 +19,10 @@ class BSMEngine:
         Calculate d1 and d2 for Black-Scholes formula.
 
         Args:
-            S: Spot price
+            S: Spot price (may be adjusted for discrete dividends)
             K: Strike price
             r: Risk-free rate
-            q: Dividend yield
+            q: Dividend yield (continuous only)
             sigma: Volatility
             T: Time to maturity
 
@@ -79,6 +80,9 @@ class BSMEngine:
 
         Returns:
             Option price
+
+        Raises:
+            ValueError: If American option with discrete dividends (no closed-form solution)
         """
         S = market.spot
         K = option.strike
@@ -87,7 +91,20 @@ class BSMEngine:
         q = market.dividend_yield
         sigma = market.volatility
 
+        # Check for unsupported combination
+        if option.style == OptionStyle.AMERICAN and market.has_discrete_dividends(T):
+            raise ValueError(
+                "BSM engine does not support American options with discrete dividends. "
+                "Use Binomial Tree engine instead."
+            )
+
+        # For European options with discrete dividends, use spot adjustment
+        S_eff = S
+        if market.has_discrete_dividends(T):
+            pv_div = market.pv_discrete_dividends(T)
+            S_eff = S - pv_div
+
         if option.option_type == OptionType.CALL:
-            return BSMEngine._price_call(S, K, r, q, sigma, T)
+            return BSMEngine._price_call(S_eff, K, r, q, sigma, T)
         else:
-            return BSMEngine._price_put(S, K, r, q, sigma, T)
+            return BSMEngine._price_put(S_eff, K, r, q, sigma, T)
