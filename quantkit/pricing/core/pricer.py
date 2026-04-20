@@ -1,6 +1,6 @@
 """Main pricing router - delegates to appropriate engine"""
 
-from .instruments import Option, OptionStyle, OptionType
+from .instruments import Option, OptionStyle, OptionType, OptionPriceResult
 from .market import MarketData
 from ..engines.bsm import BSMEngine
 from ..engines.binomial_tree import BinomialTreeEngine
@@ -19,7 +19,7 @@ class Pricer:
 
     @staticmethod
     def price(option: Option, market: MarketData, engine: str = "auto",
-              steps: int = 100, model: str = "crr") -> float:
+              steps: int = 100, model: str = "crr") -> OptionPriceResult:
         """
         Price an option using the appropriate engine.
 

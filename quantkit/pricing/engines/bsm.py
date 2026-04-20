@@ -2,9 +2,9 @@
 
 import math
 from scipy.stats import norm
-from ..core.instruments import Option, OptionStyle, OptionType
+from ..core.instruments import Option, OptionStyle, OptionType, OptionPriceResult
 from ..core.market import MarketData
-
+import numpy as np
 
 class BSMEngine:
     """
@@ -105,6 +105,8 @@ class BSMEngine:
             S_eff = S - pv_div
 
         if option.option_type == OptionType.CALL:
-            return BSMEngine._price_call(S_eff, K, r, q, sigma, T)
+            price =  BSMEngine._price_call(S_eff, K, r, q, sigma, T)
         else:
-            return BSMEngine._price_put(S_eff, K, r, q, sigma, T)
+            price =  BSMEngine._price_put(S_eff, K, r, q, sigma, T)
+
+        return OptionPriceResult(price=price, boundary_times=np.array([]), boundary_spots=np.array([]))

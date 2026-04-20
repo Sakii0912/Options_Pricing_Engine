@@ -3,7 +3,7 @@
 import math
 import numpy as np
 from scipy.interpolate import interp1d
-from ..core.instruments import Option, OptionStyle, OptionType
+from ..core.instruments import Option, OptionStyle, OptionType, OptionPriceResult
 from ..core.market import MarketData
 
 
@@ -158,11 +158,17 @@ class BinomialTreeEngine:
             else:
                 option_tree[self.steps][j] = max(K - S_T, 0.0)
 
+
+        boundary_times = []
+        boundary_spots = []
+
         # Backward induction
         for i in range(self.steps - 1, -1, -1):
             # Check if there's a dividend at step i (ex-dividend step)
             has_div_at_i = i in div_steps
             div_amount = div_steps.get(i, 0.0)
+
+            step_boundary_spot = None
 
             for j in range(i + 1):
                 S_current = price_tree[i][j]
@@ -194,15 +200,26 @@ class BinomialTreeEngine:
 
                 # For American options, check early exercise
                 if is_american:
-                    if is_call:
-                        exercise = max(S_current - K, 0.0)
-                    else:
-                        exercise = max(K - S_current, 0.0)
+                    exercise = max(S_current - K, 0.0) if is_call else max(K - S_current, 0.0)
+                    if exercise > continuation + 1e-9:
+                        if is_call:
+                            # For calls, find the MINIMUM stock price that triggers exercise
+                            if step_boundary_spot is None or S_current < step_boundary_spot:
+                                step_boundary_spot = S_current
+                        else:
+                            # For puts, find the MAXIMUM stock price that triggers exercise
+                            if step_boundary_spot is None or S_current > step_boundary_spot:
+                                step_boundary_spot = S_current
+                    
                     option_tree[i][j] = max(continuation, exercise)
                 else:
                     option_tree[i][j] = continuation
 
-        return option_tree[0][0]
+            if step_boundary_spot is not None:
+                boundary_times.append(i * dt)
+                boundary_spots.append(step_boundary_spot)
+
+        return option_tree[0][0], np.array(boundary_times), np.array(boundary_spots)
 
     def price(self, option: Option, market: MarketData) -> float:
         """
@@ -234,6 +251,6 @@ class BinomialTreeEngine:
         price_tree = self._build_price_tree(S, u, d)
 
         # Compute option price via backward induction (handles discrete dividends internally)
-        option_price = self._backward_induction(price_tree, option, market, K, p, r, dt)
+        option_price, b_times, b_spots = self._backward_induction(price_tree, option, market, K, p, r, dt)
 
-        return option_price
+        return OptionPriceResult(price=option_price, boundary_times=b_times, boundary_spots=b_spots)
