@@ -93,7 +93,11 @@ class LSMCEngine:
         # If it's a European option, we can skip the backward induction and directly compute the discounted payoff
         if instrument.style == OptionStyle.EUROPEAN:
             terminal_payoffs = self._payoff(paths[:, -1], K, instrument.option_type)
-            return float(np.mean(terminal_payoffs) * np.exp(-r * T))
+            return OptionPriceResult(
+                price=float(np.mean(terminal_payoffs) * np.exp(-r * T)),
+                boundary_times=np.array([]),
+                boundary_spots=np.array([])
+            )
         cash_flows = self._payoff(paths[:, -1], K, instrument.option_type)
         
         # Boundary tracking arrays
@@ -104,10 +108,10 @@ class LSMCEngine:
         # High-resolution deterministic grid for boundary root-finding
         if instrument.option_type == OptionType.PUT:
             # min_simulated_spot = paths[itm, t].min()
-            spot_grid = np.linspace(1e-4, K, K*100)
+            spot_grid = np.linspace(1e-4, K, int(K*100))
         else:
             # max_simulated_spot = paths[itm, t].max()
-            spot_grid = np.linspace(K, 10*K, K)
+            spot_grid = np.linspace(K, 10*K, int(K))
 
         
         payoff_grid = self._payoff(spot_grid, K, instrument.option_type)
