@@ -185,7 +185,7 @@ class BinomialTreeEngine:
 
                     # Linear interpolation
                     interp_func = interp1d(spots_next, values_next, kind='linear',
-                                          bounds_error=True, fill_value='extrapolate')
+                                          bounds_error=False, fill_value='extrapolate')
                     value_at_ex_div = interp_func(S_ex_div)
 
                     # Discount back
