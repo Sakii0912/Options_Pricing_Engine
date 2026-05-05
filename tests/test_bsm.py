@@ -38,3 +38,8 @@ def test_bsm_rejects_american_discrete_divs(dividend_market, am_call):
     """BSM should raise an error if asked to price American with discrete dividends."""
     with pytest.raises(ValueError, match="BSM engine does not support American options"):
         BSMEngine.price(am_call, dividend_market)
+
+
+# DRY - check for duplicate tests
+
+

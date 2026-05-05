@@ -61,6 +61,8 @@ def test_monotonicity_spot(standard_market, eur_call, eur_put):
     assert c_high > c_low, "Call price did not increase with spot price"
     assert p_high < p_low, "Put price did not decrease with spot price"
 
+# can you add tests for monotonicity with respect to strike, time to maturity, and volatility, risk free rate?
+
 
 def test_lower_bounds(standard_market, eur_call, eur_put):
     """European options must respect absolute theoretical lower bounds."""
@@ -76,6 +78,8 @@ def test_lower_bounds(standard_market, eur_call, eur_put):
     assert c_price >= max(0.0, S - discounted_strike) - 1e-5
     assert p_price >= max(0.0, discounted_strike - S) - 1e-5
 
+# upper bounds, bounds for American options, etc.
+
 
 def test_time_value_is_positive(standard_market, am_call):
     """An option's price should always be >= its immediate intrinsic value."""
@@ -86,3 +90,5 @@ def test_time_value_is_positive(standard_market, am_call):
     intrinsic_value = max(0.0, S - K)
     
     assert price >= intrinsic_value - 1e-5
+
+# can you add a test for deep ITM European puts? 

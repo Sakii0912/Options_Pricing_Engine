@@ -84,3 +84,9 @@ def test_lsmc_regression_types_execute(standard_market):
         res = engine.price(am_put, standard_market)
         
         assert res.price > 0, f"Failed on regression type: {reg}"
+
+# LSMC - European put <= American Put
+# LSMC - American call = European call (no dividends) (with tolerance)
+# LSMC - put call parity with tolerance 
+# LSMC - test bounds for EACH with some tolerance
+# monotonocity tests 
