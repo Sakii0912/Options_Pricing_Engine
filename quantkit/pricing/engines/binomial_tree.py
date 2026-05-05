@@ -184,9 +184,14 @@ class BinomialTreeEngine:
                     values_next = np.array([option_tree[i + 1][jj] for jj in range(i + 2)])
 
                     # Linear interpolation
-                    interp_func = interp1d(spots_next, values_next, kind='linear',
-                                          bounds_error=True, fill_value='extrapolate')
-                    value_at_ex_div = interp_func(S_ex_div)
+                    interp_func = interp1d(
+                        spots_next,
+                        values_next,
+                        kind='linear',
+                        bounds_error=False,
+                        fill_value='extrapolate'
+                    )
+                    value_at_ex_div = float(interp_func(S_ex_div))
 
                     # Discount back
                     continuation = discount_factor * value_at_ex_div
