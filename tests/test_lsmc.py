@@ -4,6 +4,7 @@ import pytest
 import numpy as np
 from quantkit.pricing.engines.lsmc import LSMCEngine, LSMCConfig, BasisType, RegressionType
 from quantkit.pricing.engines.bsm import BSMEngine
+from quantkit.pricing.core.market import MarketData
 from quantkit.pricing.core.instruments import Option, OptionType, OptionStyle
 
 
@@ -90,3 +91,108 @@ def test_lsmc_regression_types_execute(standard_market):
 # LSMC - put call parity with tolerance 
 # LSMC - test bounds for EACH with some tolerance
 # monotonocity tests 
+
+# ====================================================================
+# LSMC Specific Invariant & Property Tests
+# ====================================================================
+
+def test_lsmc_american_call_equals_european(standard_market, lsmc_fast_config):
+    """For a non-dividend paying stock, American Call == European Call."""
+    # LSMC has variance, so we use the exact same seed and config for both to ensure
+    # the paths generated are 100% identical.
+    am_call = Option(strike=100.0, maturity=1.0, option_type=OptionType.CALL, style=OptionStyle.AMERICAN)
+    eur_call = Option(strike=100.0, maturity=1.0, option_type=OptionType.CALL, style=OptionStyle.EUROPEAN)
+    
+    lsmc_engine = LSMCEngine(lsmc_fast_config)
+    
+    am_price = lsmc_engine.price(am_call, standard_market).price
+    eur_price = lsmc_engine.price(eur_call, standard_market).price
+    
+    # Because there are no dividends, early exercise is never optimal.
+    # The regression should figure this out and yield essentially the same price.
+    assert np.isclose(am_price, eur_price, atol=0.05)
+
+
+def test_lsmc_put_call_parity(standard_market, lsmc_fast_config):
+    """European put-call parity holds for LSMC within Monte Carlo tolerance."""
+    eur_call = Option(strike=100.0, maturity=1.0, option_type=OptionType.CALL, style=OptionStyle.EUROPEAN)
+    eur_put = Option(strike=100.0, maturity=1.0, option_type=OptionType.PUT, style=OptionStyle.EUROPEAN)
+    
+    lsmc_engine = LSMCEngine(lsmc_fast_config)
+    c_price = lsmc_engine.price(eur_call, standard_market).price
+    p_price = lsmc_engine.price(eur_put, standard_market).price
+    
+    S = standard_market.spot
+    K = eur_call.strike
+    r = standard_market.rate
+    T = eur_call.maturity
+    
+    lhs = c_price - p_price
+    rhs = S - K * np.exp(-r * T)
+    
+    # Monte Carlo variance means parity won't be exact to the 5th decimal.
+    # 50 cents of tolerance is reasonable for 10k paths.
+    assert np.isclose(lhs, rhs, atol=0.5)
+
+
+def test_lsmc_bounds(standard_market, lsmc_fast_config):
+    """LSMC prices must respect absolute lower and upper bounds."""
+    am_put = Option(strike=100.0, maturity=1.0, option_type=OptionType.PUT, style=OptionStyle.AMERICAN)
+    am_call = Option(strike=100.0, maturity=1.0, option_type=OptionType.CALL, style=OptionStyle.AMERICAN)
+    
+    lsmc_engine = LSMCEngine(lsmc_fast_config)
+    p_price = lsmc_engine.price(am_put, standard_market).price
+    c_price = lsmc_engine.price(am_call, standard_market).price
+    
+    S = standard_market.spot
+    K = am_put.strike
+    r = standard_market.rate
+    T = am_put.maturity
+    
+    # Lower bounds (Intrinsic value)
+    assert p_price >= max(0.0, K - S) - 1e-4
+    assert c_price >= max(0.0, S - K) - 1e-4
+    
+    # Upper bounds
+    assert p_price <= K
+    assert c_price <= S
+
+
+def test_lsmc_monotonicity(standard_market):
+    """Test LSMC monotonicity for Spot and Volatility using a locked seed."""
+    am_put = Option(strike=100.0, maturity=1.0, option_type=OptionType.PUT, style=OptionStyle.AMERICAN)
+    
+    # Use a solid number of paths to ensure the macro-trend overwhelms any MC noise
+    base_config = LSMCConfig(n_paths=20000, n_steps=50, seed=123)
+    
+    # 1. Spot Monotonicity (Put should decrease as Spot increases)
+    market_low_s = MarketData(spot=90.0, rate=0.05, volatility=0.2)
+    market_high_s = MarketData(spot=110.0, rate=0.05, volatility=0.2)
+    
+    p_low_s = LSMCEngine(base_config).price(am_put, market_low_s).price
+    p_high_s = LSMCEngine(base_config).price(am_put, market_high_s).price
+    assert p_low_s > p_high_s
+    
+    # 2. Volatility Monotonicity (Put should increase as Vol increases)
+    market_low_v = MarketData(spot=100.0, rate=0.05, volatility=0.1)
+    market_high_v = MarketData(spot=100.0, rate=0.05, volatility=0.4)
+    
+    p_low_v = LSMCEngine(base_config).price(am_put, market_low_v).price
+    p_high_v = LSMCEngine(base_config).price(am_put, market_high_v).price
+    assert p_high_v > p_low_v
+
+def test_lsmc_european_put_leq_american(standard_market, lsmc_fast_config):
+    """LSMC: American put price should be >= European put price."""
+    # Define both options with identical parameters except for style
+    am_put = Option(strike=100.0, maturity=1.0, option_type=OptionType.PUT, style=OptionStyle.AMERICAN)
+    eur_put = Option(strike=100.0, maturity=1.0, option_type=OptionType.PUT, style=OptionStyle.EUROPEAN)
+
+    lsmc_engine = LSMCEngine(lsmc_fast_config)
+    
+    # Price both using the exact same configuration and seed
+    am_price = lsmc_engine.price(am_put, standard_market).price
+    eur_price = lsmc_engine.price(eur_put, standard_market).price
+
+    # American should always be greater than or equal to European.
+    # We include a tiny 1e-4 buffer just in case float arithmetic gets weird.
+    assert am_price >= eur_price - 1e-4
