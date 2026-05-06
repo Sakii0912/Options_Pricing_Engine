@@ -51,6 +51,39 @@ def plot_convergence_error_and_time(option: Option, market: MarketData, step_ran
     plt.tight_layout()
     plt.show()
 
+def generate_pc_parity_table_binomial(market: MarketData, examples: list):
+    """
+    Evaluates European Put-Call Parity: C - P = S - PV(K) - PV(Divs) using Binomial Tree.
+    """
+    results = []
+    for opt_params in examples:
+        K = opt_params['strike']
+        T = opt_params['maturity']
+        
+        call = Option(strike=K, maturity=T, option_type=OptionType.CALL, style=OptionStyle.EUROPEAN)
+        put = Option(strike=K, maturity=T, option_type=OptionType.PUT, style=OptionStyle.EUROPEAN)
+        
+        c_price = Pricer.price(call, market, engine="binomial", steps=200).price
+        p_price = Pricer.price(put, market, engine="binomial", steps=200).price
+        
+        # Calculate Right Hand Side
+        pv_k = K * math.exp(-market.rate * T)
+        pv_div = market.pv_discrete_dividends(T) if hasattr(market, 'pv_discrete_dividends') else 0.0
+        
+        lhs = c_price - p_price
+        rhs = market.spot - pv_k - pv_div
+        
+        results.append({
+            "Strike": K,
+            "Maturity": T,
+            "Call Price": round(c_price, 4),
+            "Put Price": round(p_price, 4),
+            "C - P (LHS)": round(lhs, 4),
+            "S - PV(K) - PV(Div) (RHS)": round(rhs, 4),
+            "Diff (Error)": round(abs(lhs - rhs), 6)
+        })
+        
+    return pd.DataFrame(results)
 # ==========================================
 # 6. Put-Call Parity Table
 # ==========================================
