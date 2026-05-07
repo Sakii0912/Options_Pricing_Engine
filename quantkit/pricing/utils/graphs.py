@@ -357,7 +357,7 @@ def plot_binomial_convergence(option: Option, market: MarketData, step_range: ra
     plt.plot(steps_list, tree_prices, label='Binomial Tree Price', marker='o', markersize=3, alpha=0.7)
     plt.axhline(y=bsm_price, color='red', linestyle='-', label=f'BSM Price ({bsm_price:.4f})')
     
-    plt.title('Binomial Tree Convergence to BSM')
+    plt.title('Binomial Tree Convergence')
     plt.xlabel('Number of Steps (N)')
     plt.ylabel('Option Price')
     plt.grid(True, linestyle='--', alpha=0.7)
