@@ -53,3 +53,25 @@ class MarketData:
     def dividends_in_range(self, t_start: float, t_end: float) -> List[DividendEvent]:
         """Get all discrete dividends in the time range [t_start, t_end)."""
         return [div for div in self.discrete_dividends if t_start <= div.time < t_end]
+
+@dataclass
+class MultiAssetMarketData:
+    """
+    Market parameters for multi-asset option pricing.
+    
+    Attributes:
+        spot: Array of current spot prices (S0)
+        rate: Risk-free interest rate (r)
+        volatility: Array of asset volatilities (sigma)
+        correlation_matrix: Correlation matrix between assets
+        dividend_yield: Array of dividend yields (q), optional
+    """
+    spot: np.ndarray
+    rate: float
+    volatility: np.ndarray
+    correlation_matrix: np.ndarray
+    dividend_yield: np.ndarray = None
+    
+    def __post_init__(self):
+        if self.dividend_yield is None:
+            self.dividend_yield = np.zeros_like(self.spot)

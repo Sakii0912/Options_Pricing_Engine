@@ -31,7 +31,7 @@ def plot_exercise_boundaries(
     # 2. Plot the Benchmark Boundary (if provided)
     if benchmark_res is not None:
         ax.plot(benchmark_res.boundary_times, benchmark_res.boundary_spots, 
-                label="Benchmark (Tree/DP) Exact Boundary", 
+                label="Benchmark (Binomial) Boundary", 
                 linewidth=2, color="black", linestyle="--")
 
     # 3. Shade the Exercise and Continuation Zones

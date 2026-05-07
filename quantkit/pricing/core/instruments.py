@@ -39,3 +39,21 @@ class OptionPriceResult:
     price: float
     boundary_times: np.ndarray
     boundary_spots: np.ndarray
+
+class BasketType(Enum):
+    """Aggregation type for basket options"""
+    AVERAGE = "average"
+    MAX = "max"
+    MIN = "min"
+
+@dataclass
+class BasketOption(Option):
+    """
+    Basket Option contract specification.
+    
+    Attributes:
+        basket_type: How the underlying assets are aggregated
+        weights: Optional weights for the basket components (defaults to equal weights if None)
+    """
+    basket_type: BasketType = BasketType.AVERAGE
+    weights: np.ndarray = None

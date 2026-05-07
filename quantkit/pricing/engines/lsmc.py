@@ -37,17 +37,64 @@ class LSMCEngine:
         self.config = config
         self.rng = np.random.default_rng(self.config.seed)
 
-    def _generate_gbm_paths(self, S0: float, r: float, sigma: float, T: float) -> np.ndarray:
-        """Generates standard risk-neutral GBM paths."""
-        dt = T / self.config.n_steps
-        drift = (r - 0.5 * sigma**2) * dt
-        diffusion = sigma * np.sqrt(dt)
-        Z = self.rng.standard_normal((self.config.n_paths, self.config.n_steps))
+    # def _generate_gbm_paths(self, S0: float, r: float, sigma: float, T: float, q: float) -> np.ndarray:
+    #     """Generates standard risk-neutral GBM paths."""
+    #     dt = T / self.config.n_steps
+    #     drift = (r - q - 0.5 * sigma**2) * dt
+    #     diffusion = sigma * np.sqrt(dt)
+    #     Z = self.rng.standard_normal((self.config.n_paths, self.config.n_steps))
         
-        paths = np.zeros((self.config.n_paths, self.config.n_steps + 1))
-        paths[:, 0] = S0
-        paths[:, 1:] = S0 * np.exp(np.cumsum(drift + diffusion * Z, axis=1))
-        return paths
+    #     paths = np.zeros((self.config.n_paths, self.config.n_steps + 1))
+    #     paths[:, 0] = S0
+    #     paths[:, 1:] = S0 * np.exp(np.cumsum(drift + diffusion * Z, axis=1))
+    #     return paths
+    def _generate_gbm_paths(self, S0: float, r: float, sigma: float, T: float, q: float, correlation_matrix: np.ndarray = None) -> np.ndarray:
+        """Generates standard risk-neutral GBM paths with Antithetic Variates, supporting multi-asset."""
+        dt = T / self.config.n_steps
+        
+        is_multi_asset = isinstance(S0, np.ndarray) and S0.size > 1
+        
+        # Generate HALF the required random numbers
+        half_paths = self.config.n_paths // 2
+        
+        if is_multi_asset:
+            d = len(S0)
+            Z = self.rng.standard_normal((half_paths, self.config.n_steps, d))
+            
+            # Mirror the shocks to create the other half (Antithetic Variates)
+            Z = np.concatenate((Z, -Z), axis=0)
+            
+            # Ensure we return exactly n_paths in case n_paths was an odd number
+            if Z.shape[0] < self.config.n_paths:
+                extra_Z = self.rng.standard_normal((1, self.config.n_steps, d))
+                Z = np.concatenate((Z, extra_Z), axis=0)
+            
+            if correlation_matrix is not None:
+                L = np.linalg.cholesky(correlation_matrix)
+                Z = Z @ L.T
+                
+            drift = (r - q - 0.5 * sigma**2) * dt
+            diffusion = sigma * np.sqrt(dt)
+            
+            paths = np.zeros((self.config.n_paths, self.config.n_steps + 1, d))
+            paths[:, 0, :] = S0
+            paths[:, 1:, :] = S0 * np.exp(np.cumsum(drift + diffusion * Z, axis=1))
+            return paths
+        else:
+            Z = self.rng.standard_normal((half_paths, self.config.n_steps))
+            Z = np.concatenate((Z, -Z), axis=0)
+            
+            if Z.shape[0] < self.config.n_paths:
+                extra_Z = self.rng.standard_normal((1, self.config.n_steps))
+                Z = np.concatenate((Z, extra_Z), axis=0)
+                
+            drift = (r - q - 0.5 * sigma**2) * dt
+            diffusion = sigma * np.sqrt(dt)
+                
+            paths = np.zeros((self.config.n_paths, self.config.n_steps + 1))
+            paths[:, 0] = S0
+            paths[:, 1:] = S0 * np.exp(np.cumsum(drift + diffusion * Z, axis=1))
+            return paths
 
     def _payoff(self, spot_prices: np.ndarray, strike: float, option_type: OptionType) -> np.ndarray:
         if option_type == OptionType.PUT:
@@ -82,13 +129,33 @@ class LSMCEngine:
         raise ValueError(f"Unsupported regression type: {self.config.regression_type}")
 
     def price(self, instrument: Option, market: MarketData) -> OptionPriceResult:
+        is_multi = isinstance(market, MultiAssetMarketData)
         S0, r, sigma = market.spot, market.rate, market.volatility
         K, T = instrument.strike, instrument.maturity
+        q = market.dividend_yield
         dt = T / self.config.n_steps
         df = np.exp(-r * dt)
 
         # 1. Path Generation
-        paths = self._generate_gbm_paths(S0, r, sigma, T)
+        if is_multi:
+            paths = self._generate_gbm_paths(S0, r, sigma, T, q, market.correlation_matrix)
+        else:
+            paths = self._generate_gbm_paths(S0, r, sigma, T, q)
+
+        # Handle Basket Option Aggregation
+        if getattr(instrument, 'basket_type', None) is not None and is_multi:
+            weights = instrument.weights
+            if weights is None:
+                weights = np.ones(len(S0)) / len(S0)
+                
+            if instrument.basket_type == BasketType.AVERAGE:
+                paths = np.average(paths, axis=2, weights=weights)
+            elif instrument.basket_type == BasketType.MAX:
+                paths = np.max(paths * weights, axis=2)
+            elif instrument.basket_type == BasketType.MIN:
+                paths = np.min(paths * weights, axis=2)
+                
+            S0 = paths[0, 0] # Override scalar S0 for correct T=0 check
 
         # If it's a European option, we can skip the backward induction and directly compute the discounted payoff
         if instrument.style == OptionStyle.EUROPEAN:
@@ -101,17 +168,17 @@ class LSMCEngine:
         cash_flows = self._payoff(paths[:, -1], K, instrument.option_type)
         
         # Boundary tracking arrays
-        boundary_spots = np.zeros(self.config.n_steps + 1)
+        # boundary_spots = np.zeros(self.config.n_steps + 1)
+        boundary_spots = np.full(self.config.n_steps + 1, np.nan)
         boundary_times = np.linspace(0, T, self.config.n_steps + 1)
         boundary_spots[-1] = K 
 
         # High-resolution deterministic grid for boundary root-finding
+        grid_resolution = 5000 
         if instrument.option_type == OptionType.PUT:
-            # min_simulated_spot = paths[itm, t].min()
-            spot_grid = np.linspace(1e-4, K, int(K*100))
+            spot_grid = np.linspace(1e-4, K, grid_resolution)
         else:
-            # max_simulated_spot = paths[itm, t].max()
-            spot_grid = np.linspace(K, 10*K, int(K))
+            spot_grid = np.linspace(K, 100*K, grid_resolution)
 
         
         payoff_grid = self._payoff(spot_grid, K, instrument.option_type)
